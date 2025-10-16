@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FoodSaver</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin:0; background: #f9f9f9; }
+    header { background: #4CAF50; color: white; text-align: center; padding: 20px; }
+    nav { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+    nav button { background: #4CAF50; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 5px; }
+    nav button:hover { background: #45a049; }
+    section { display: none; max-width: 800px; margin: 20px auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 8px #ccc; }
+    .active { display: block; }
+    form input { display: block; margin: 10px 0; padding: 8px; width: 100%; max-width: 400px; }
+    .post { background: #f2f2f2; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+    .post button { margin-top: 10px; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; }
+    .enquire-btn { background: #2196F3; color: white; margin-right: 10px; }
+    .delete-btn { background: #f44336; color: white; }
+    .logout-btn { background: #ff9800; color: white; float: right; margin-top: -10px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🍽️ FoodSaver</h1>
+  <p>Connecting surplus food with those in need</p>
+  <nav>
+    <button onclick="showSection('home')">Home</button>
+    <button onclick="showSection('donorLogin')">Donor Login</button>
+    <button onclick="showSection('recipientLogin')">Recipient Login</button>
+  </nav>
+</header>
+
+<section id="home" class="active">
+  <h2>Mission</h2>
+  <p>Reduce food waste by connecting restaurants and individuals with communities in need.</p>
+  <h2>Vision</h2>
+  <p>A world with zero food waste and zero hunger.</p>
+</section>
+
+<section id="donorLogin">
+  <h2>Donor Login</h2>
+  <form id="donorLoginForm">
+    <input type="text" id="donorUsername" placeholder="Username" required>
+    <input type="password" id="donorPassword" placeholder="Password" required>
+    <button type="submit">Login / Register</button>
+  </form>
+</section>
+
+<section id="recipientLogin">
+  <h2>Recipient Login</h2>
+  <form id="recipientLoginForm">
+    <input type="text" id="recipientUsername" placeholder="Username" required>
+    <input type="password" id="recipientPassword" placeholder="Password" required>
+    <button type="submit">Login / Register</button>
+  </form>
+</section>
+
+<section id="donorDashboard">
+  <button class="logout-btn" onclick="logout()">Logout</button>
+  <h2>Donor Dashboard</h2>
+  <form id="donorForm">
+    <input type="text" id="foodType" placeholder="Type of Food" required>
+    <input type="text" id="quantity" placeholder="Quantity" required>
+    <input type="text" id="location" placeholder="Pickup Location" required>
+    <input type="text" id="contact" placeholder="Contact Number" required>
+    <button type="submit">Post Food</button>
+  </form>
+  <h3>Your Posts</h3>
+  <div id="donorPostsList"></div>
+</section>
+
+<section id="recipientDashboard">
+  <button class="logout-btn" onclick="logout()">Logout</button>
+  <h2>Recipient Dashboard</h2>
+  <div id="postsList"></div>
+</section>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDalHqWlHdpEvZAUICPjDACUOCZTz04-48",
+  authDomain: "foodsaver-471ea.firebaseapp.com",
+  databaseURL: "https://foodsaver-471ea-default-rtdb.firebaseio.com",
+  projectId: "foodsaver-471ea",
+  storageBucket: "foodsaver-471ea.appspot.com",
+  messagingSenderId: "104629222019",
+  appId: "1:104629222019:web:8ecd4cab2fcdff1159f9b6",
+  measurementId: "G-1MMYFCWR4X"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ------ Variables ------
+let currentUser = null;
+
+// ------ Show Section ------
+function showSection(id){
+  document.querySelectorAll('section').forEach(sec => sec.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ------ Donor Login/Register ------
+document.getElementById('donorLoginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const username = document.getElementById('donorUsername').value.trim();
+  const password = document.getElementById('donorPassword').value.trim();
+  if(!username || !password) return alert("Fill all fields");
+  const userRef = db.ref('users/donors/'+username);
+  userRef.get().then(snapshot=>{
+    if(!snapshot.exists()){
+      userRef.set({password});
+      alert('✅ Donor registered!');
+    } else if(snapshot.val().password !== password){
+      return alert('❌ Incorrect password');
+    }
+    currentUser = { role:'donor', username };
+    showDonorDashboard();
+  });
+});
+
+// ------ Recipient Login/Register ------
+document.getElementById('recipientLoginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const username = document.getElementById('recipientUsername').value.trim();
+  const password = document.getElementById('recipientPassword').value.trim();
+  if(!username || !password) return alert("Fill all fields");
+  const userRef = db.ref('users/recipients/'+username);
+  userRef.get().then(snapshot=>{
+    if(!snapshot.exists()){
+      userRef.set({password});
+      alert('✅ Recipient registered!');
+    } else if(snapshot.val().password !== password){
+      return alert('❌ Incorrect password');
+    }
+    currentUser = { role:'recipient', username };
+    showRecipientDashboard();
+  });
+});
+
+// ------ Post Food ------
+document.getElementById('donorForm').addEventListener('submit', e => {
+  e.preventDefault();
+  if(!currentUser) return alert("Not logged in");
+
+  const foodType = document.getElementById('foodType').value.trim();
+  const quantity = document.getElementById('quantity').value.trim();
+  const location = document.getElementById('location').value.trim();
+  const contact = document.getElementById('contact').value.trim();
+
+  if(!foodType || !quantity || !location || !contact) return alert("Fill all fields");
+
+  const newPostRef = db.ref('posts').push();
+  newPostRef.set({
+    id: newPostRef.key,
+    donor: currentUser.username,
+    foodType,
+    quantity,
+    location,
+    contact
+  }).then(()=>{
+    document.getElementById('donorForm').reset();
+  }).catch(err=>{
+    alert("Error posting food: " + err.message);
+  });
+});
+
+// ------ Load Posts in Real-Time ------
+function loadPosts(){
+  db.ref('posts').on('value', snapshot => {
+    const allPosts = [];
+    snapshot.forEach(child => allPosts.push(child.val()));
+    renderDonorPosts(allPosts);
+    renderRecipientPosts(allPosts);
+  });
+}
+
+// ------ Render Donor Posts ------
+function renderDonorPosts(posts){
+  if(!currentUser || currentUser.role !== 'donor') return;
+  const donorPostsDiv = document.getElementById('donorPostsList');
+  donorPostsDiv.innerHTML = '';
+  const userPosts = posts.filter(p => p.donor === currentUser.username);
+  if(userPosts.length===0){ donorPostsDiv.innerHTML='<p>No posts yet.</p>'; return; }
+  userPosts.forEach(p=>{
+    const div = document.createElement('div');
+    div.className='post';
+    div.innerHTML = `
+      <strong>${p.foodType}</strong><br>
+      Quantity: ${p.quantity}<br>
+      Location: ${p.location}<br>
+      Contact: ${p.contact}<br>
+      <button class="delete-btn" onclick="deletePost('${p.id}')">Delete</button>
+    `;
+    donorPostsDiv.appendChild(div);
+  });
+}
+
+// ------ Render Recipient Posts ------
+function renderRecipientPosts(posts){
+  const postsDiv = document.getElementById('postsList');
+  postsDiv.innerHTML = '';
+  if(posts.length===0){ postsDiv.innerHTML='<p>No food available right now.</p>'; return; }
+  posts.forEach(p=>{
+    const div = document.createElement('div');
+    div.className='post';
+    div.innerHTML = `
+      <strong>${p.foodType}</strong><br>
+      Quantity: ${p.quantity}<br>
+      Location: ${p.location}<br>
+      Donor: ${p.donor}<br>
+      Contact: ${p.contact}<br>
+      <button class="enquire-btn" onclick="enquire('${p.contact}')">Enquire</button>
+    `;
+    postsDiv.appendChild(div);
+  });
+}
+
+// ------ Enquire ------
+function enquire(contact){ alert(`📞 Please contact the donor at ${contact} to claim the food.`); }
+
+// ------ Delete Post ------
+function deletePost(id){
+  db.ref('posts/'+id).get().then(snapshot=>{
+    if(snapshot.exists() && snapshot.val().donor === currentUser.username){
+      db.ref('posts/'+id).remove();
+    } else {
+      alert('❌ You can only delete your own posts.');
+    }
+  });
+}
+
+// ------ Logout ------
+function logout(){ currentUser=null; showSection('home'); }
+
+// ------ Show Dashboards ------
+function showDonorDashboard(){ showSection('donorDashboard'); loadPosts(); }
+function showRecipientDashboard(){ showSection('recipientDashboard'); loadPosts(); }
+
+window.onload = loadPosts;
+</script>
+
+</body>
+</html>
